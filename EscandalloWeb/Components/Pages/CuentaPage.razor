@@ -1,0 +1,162 @@
+@page "/cuenta"
+@implements IDisposable
+@inject SesionUsuarioService Sesion
+@inject NavigationManager Nav
+
+<PageTitle>Mi Cuenta - Escandallo</PageTitle>
+
+@if (!string.IsNullOrEmpty(_mensaje))
+{
+    <div class="alert @(_exito ? "alert-info" : "alert-warning")">@_mensaje</div>
+}
+
+@if (_usuario is null)
+{
+    <h1 style="margin-top:0; font-size:1.5rem;">Acceso a la Plataforma</h1>
+    <p style="color:var(--muted); margin-top:0;">Inicia sesión con tu cuenta o regístrate para gestionar tus centros de estética.</p>
+
+    <div class="grid-2">
+        <div class="card">
+            <h3 style="margin-top:0;">Iniciar Sesión</h3>
+            <div class="form-group">
+                <label>Email</label>
+                <input @bind="_loginEmail" placeholder="demo@clinicaestetica.es" />
+            </div>
+            <div class="form-group">
+                <label>Contraseña</label>
+                <input type="password" @bind="_loginPassword" placeholder="demo123" />
+            </div>
+            <button class="btn btn-primary" @onclick="LoginAsync">Entrar en mi cuenta</button>
+            <p style="font-size:0.82rem; color:var(--muted); margin-top:0.75rem;">
+                Cuenta demo preconfigurada: <code>demo@clinicaestetica.es</code> / <code>demo123</code>
+            </p>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0;">Crear Cuenta</h3>
+            <div class="form-group">
+                <label>Nombre de Empresa / Cliente</label>
+                <input @bind="_regNombre" placeholder="Ej. Grupo Estético Lumina" />
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input @bind="_regEmail" placeholder="contacto@lumina.es" />
+            </div>
+            <div class="form-group">
+                <label>Contraseña</label>
+                <input type="password" @bind="_regPassword" />
+            </div>
+            <div class="form-group">
+                <label>Nombre de tu Primer Centro de Estética</label>
+                <input @bind="_regCentro" placeholder="Ej. Lumina Centro Velázquez" />
+            </div>
+            <div class="form-group" style="flex-direction:row; align-items:center; gap:0.4rem;">
+                <input type="checkbox" id="chk-reg-excel" @bind="_regCargarExcel" />
+                <label for="chk-reg-excel" style="margin:0;">Cargar catálogo base de CalculadoraEscandallo.xlsx</label>
+            </div>
+            <button class="btn btn-primary" @onclick="RegistrarAsync">Crear Cuenta y Centro</button>
+        </div>
+    </div>
+}
+else
+{
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+        <div>
+            <h1 style="margin:0; font-size:1.5rem;">Mi Cuenta — @_usuario.Nombre</h1>
+            <small style="color:var(--muted);">@_usuario.Email · Plan: @_usuario.Plan</small>
+        </div>
+        <button class="btn btn-danger" @onclick="CerrarSesion">Cerrar Sesión</button>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem;">
+            <h3 style="margin:0;">Mis Centros de Estética (@_usuario.Centros.Count)</h3>
+            <a href="centros" class="btn btn-primary">Gestionar Mis Centros</a>
+        </div>
+
+        <div class="grid-2">
+            @foreach (var c in _usuario.Centros)
+            {
+                var esActivo = Sesion.CentroActualId == c.Id;
+                <div class="card" style="margin-bottom:0; border-color:@(esActivo ? "var(--primary)" : "var(--border)");">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <strong>@c.Nombre</strong>
+                            <div style="font-size:0.85rem; color:var(--muted);">
+                                @(string.IsNullOrWhiteSpace(c.Direccion) ? "Sin dirección" : c.Direccion)
+                            </div>
+                        </div>
+                        @if (esActivo)
+                        {
+                            <span class="badge badge-active">Centro Activo</span>
+                        }
+                        else
+                        {
+                            <button class="btn btn-outline" @onclick="() => Sesion.SeleccionarCentro(c.Id)">Activar</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+
+    private string _loginEmail = "demo@clinicaestetica.es";
+    private string _loginPassword = "demo123";
+
+    private string _regNombre = string.Empty;
+    private string _regEmail = string.Empty;
+    private string _regPassword = string.Empty;
+    private string _regCentro = string.Empty;
+    private bool _regCargarExcel = true;
+
+    private string? _mensaje;
+    private bool _exito;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async Task LoginAsync()
+    {
+        var res = await Sesion.IniciarSesionAsync(_loginEmail, _loginPassword);
+        _exito = res.Exito;
+        _mensaje = res.Mensaje;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        if (res.Exito)
+        {
+            Nav.NavigateTo("");
+        }
+    }
+
+    private async Task RegistrarAsync()
+    {
+        var res = await Sesion.RegistrarUsuarioAsync(_regNombre, _regEmail, _regPassword, _regCentro, _regCargarExcel);
+        _exito = res.Exito;
+        _mensaje = res.Mensaje;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        if (res.Exito)
+        {
+            Nav.NavigateTo("suscripcion");
+        }
+    }
+
+    private void CerrarSesion()
+    {
+        _mensaje = null;
+        Sesion.CerrarSesion();
+    }
+
+    private async void RecargarAsync()
+    {
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

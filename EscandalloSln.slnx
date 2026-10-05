@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="EscandalloWeb.Tests/EscandalloWeb.Tests.csproj" />
+  <Project Path="EscandalloWeb/EscandalloWeb.csproj" />
+</Solution>

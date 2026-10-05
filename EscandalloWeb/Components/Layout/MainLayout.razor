@@ -1,0 +1,123 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SesionUsuarioService Sesion
+@inject NavigationManager Nav
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">Escandallo Estética SaaS</div>
+
+        @if (_usuario is not null)
+        {
+            <div class="nav-section-title">Hojas de Escandallo</div>
+            <nav class="nav-links">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">📊 PVR y Datos Globales</NavLink>
+                <NavLink class="nav-link" href="servicios">💆‍♀️ Servicios y Recetas</NavLink>
+                <NavLink class="nav-link" href="productos">🧴 Productos</NavLink>
+                <NavLink class="nav-link" href="personal">👩‍⚕️ Personal</NavLink>
+                <NavLink class="nav-link" href="gastos">🏢 Gastos Generales</NavLink>
+            </nav>
+
+            <div class="nav-section-title">Cuenta y Centros</div>
+            <nav class="nav-links">
+                <NavLink class="nav-link" href="centros">🏬 Mis Centros (@_usuario.Centros.Count)</NavLink>
+                <NavLink class="nav-link" href="suscripcion">💳 Suscripción y Pagos</NavLink>
+                <NavLink class="nav-link" href="cuenta">👤 Mi Cuenta</NavLink>
+                <NavLink class="nav-link" href="manual">📖 Manual de Uso</NavLink>
+            </nav>
+        }
+        else
+        {
+            <div class="nav-section-title">Acceso</div>
+            <nav class="nav-links">
+                <NavLink class="nav-link" href="cuenta">🔐 Iniciar Sesión / Crear Cuenta</NavLink>
+            </nav>
+        }
+    </aside>
+
+    <div class="main-area">
+        <header class="topbar">
+            <div class="topbar-controls">
+                @if (_usuario is not null)
+                {
+                    <span><strong>Cliente:</strong> @_usuario.Nombre</span>
+                    @if (_usuario.SuscripcionActiva)
+                    {
+                        <span class="badge badge-active">Suscripción @_usuario.Plan Activa</span>
+                    }
+                    else
+                    {
+                        <a href="suscripcion" class="badge badge-inactive">Suscripción Inactiva (Activar)</a>
+                    }
+                }
+                else
+                {
+                    <span>Sin sesión iniciada — Inicia sesión o crea tu cuenta</span>
+                }
+            </div>
+
+            @if (_usuario is not null)
+            {
+                <div class="topbar-controls">
+                    @if (_usuario.Centros.Any())
+                    {
+                        <label for="selector-centro"><strong>Centro activo:</strong></label>
+                        <select id="selector-centro" value="@Sesion.CentroActualId" @onchange="CambiarCentro">
+                            @foreach (var c in _usuario.Centros)
+                            {
+                                <option value="@c.Id">@c.Nombre</option>
+                            }
+                        </select>
+                    }
+                    <button class="btn btn-outline" @onclick="CerrarSesion">Cerrar sesión</button>
+                </div>
+            }
+        </header>
+
+        <main class="content">
+            @if (_usuario is null)
+            {
+                <EscandalloWeb.Components.Pages.CuentaPage />
+            }
+            else
+            {
+                @Body
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    private Usuario? _usuario;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += ActualizarVista;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private void CambiarCentro(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            Sesion.SeleccionarCentro(id);
+        }
+    }
+
+    private void CerrarSesion()
+    {
+        Sesion.CerrarSesion();
+        Nav.NavigateTo("cuenta");
+    }
+
+    private async void ActualizarVista()
+    {
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Sesion.OnEstadoCambiado -= ActualizarVista;
+    }
+}

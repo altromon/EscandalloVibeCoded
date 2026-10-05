@@ -1,0 +1,446 @@
+@page "/servicios"
+@implements IDisposable
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SesionUsuarioService Sesion
+
+<PageTitle>Servicios y Escandallo - Escandallo</PageTitle>
+
+@if (_centro is null || _usuario is null)
+{
+    <div class="alert alert-warning">Selecciona un centro activo o inicia sesión.</div>
+}
+else
+{
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+        <h1 style="margin:0; font-size:1.5rem;">Hoja Servicios (Recetas de Escandallo) — @_centro.Nombre</h1>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <a href="manual" class="btn btn-outline">📖 Ver Manual de Ayuda</a>
+            <a href="/api/export/pdf/@_centro.Id" target="_blank" data-enhance-nav="false" class="btn btn-outline">📄 Exportar PDF (Resumen + Desglose)</a>
+            <a href="/api/export/excel/@_centro.Id" target="_blank" data-enhance-nav="false" class="btn btn-outline">📗 Exportar Excel (.xlsx)</a>
+        </div>
+    </div>
+
+    @if (!_usuario.SuscripcionActiva)
+    {
+        <div class="alert alert-warning">Suscripción inactiva. <a href="suscripcion">Activa un plan</a> para editar servicios y sus productos.</div>
+    }
+    else
+    {
+        <div class="card">
+            <h3 style="margin-top:0; font-size:1.05rem;">Crear Nuevo Servicio / Tratamiento</h3>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Nombre del Servicio
+                        <span class="help-tip" tabindex="0" data-tip="Nombre del tratamiento o servicio estético cuyo coste quieres calcular.">?</span>
+                    </label>
+                    <input @bind="_nuevoNombre" placeholder="Ej. Higiene Facial Profunda" title="Nombre del servicio" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Cantidad (Duración)
+                        <span class="help-tip" tabindex="0" data-tip="Tiempo de cabina empleado en el tratamiento. Multiplica el coste por minuto de Gastos Generales y del Personal.">?</span>
+                    </label>
+                    <div class="qty-field">
+                        <input type="number" step="5" @bind="_nuevosMinutos" title="Duración del tratamiento en minutos" />
+                        <span class="unit-badge">min</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Persona (Perfil Profesional)
+                        <span class="help-tip" tabindex="0" data-tip="Categoría profesional que realiza el tratamiento en cabina.">?</span>
+                    </label>
+                    <select @bind="_nuevaPersonaId" title="Selecciona la categoría profesional">
+                        @foreach (var per in _centro.Personal)
+                        {
+                            <option value="@per.Id">@per.Nombre (@per.PrecioUnitario.ToString("N4") €/min)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        PVR Opcional (€)
+                        <span class="help-tip" tabindex="0" data-tip="Precio de Venta Recomendado final al público (puedes modificarlo también en la hoja PVR).">?</span>
+                    </label>
+                    <input type="number" step="1" @bind="_nuevoPvr" placeholder="Ej. 85" title="Precio de venta al público opcional" />
+                </div>
+                <button class="btn btn-primary" @onclick="CrearServicioAsync">+ Crear Servicio</button>
+            </div>
+        </div>
+    }
+
+    @foreach (var s in _centro.Servicios)
+    {
+        var totalGastosUnit = _centro.TotalPrecioUnitarioGastosGenerales;
+        var costeGastos = s.CalcularGastosGenerales(totalGastosUnit);
+        var costePersona = s.CostePersona;
+        var costeProductos = s.CosteProductos;
+        var escandalloTotal = s.CalcularEscandalloTotal(totalGastosUnit);
+        var expandido = _serviciosExpandidos.Contains(s.Id);
+
+        <div class="card" style="padding:0.9rem 1.15rem; margin-bottom:0.75rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap;">
+                    <button class="btn btn-outline" style="padding:0.3rem 0.65rem;"
+                            title="Mostrar u ocultar el desglose de productos y costes de este servicio"
+                            @onclick="() => AlternarServicio(s.Id)">
+                        @(expandido ? "▼ Plegar" : "▶ Desplegar")
+                    </button>
+                    <strong style="font-size:1.05rem;">@s.Nombre</strong>
+                    <span style="color:var(--muted); font-size:0.88rem;">
+                        @s.Minutos.ToString("N0") min · @(s.CategoriaPersonal?.Nombre ?? "Sin personal") · @s.LineasProducto.Count prod.
+                    </span>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; font-size:0.88rem;">
+                    <span title="Minutos x Precio Unitario Gastos Generales">Gastos: <strong>@costeGastos.ToString("N2") €</strong></span>
+                    <span title="Minutos x Precio Unitario Personal">Personal: <strong>@costePersona.ToString("N2") €</strong></span>
+                    <span title="Suma de costes de productos consumidos">Productos: <strong>@costeProductos.ToString("N2") €</strong></span>
+                    <span class="badge badge-active" style="font-size:0.9rem; padding:0.3rem 0.75rem;"
+                          title="Gastos Generales + Coste Personal + Coste Productos">
+                        Escandallo Total: @escandalloTotal.ToString("N2") €
+                    </span>
+                </div>
+            </div>
+
+            @if (expandido)
+            {
+                <hr style="border:0; border-top:1px solid var(--border); margin:0.9rem 0;" />
+
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.85rem;">
+                    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <label style="font-size:0.85rem;">Servicio:</label>
+                        <input value="@s.Nombre" disabled="@(!_usuario.SuscripcionActiva)"
+                               style="font-weight:700; width:220px;"
+                               @onchange="(e) => ActualizarServicioAsync(s.Id, nombre: e.Value?.ToString())" />
+
+                        <label style="font-size:0.85rem;">
+                            Cantidad:
+                            <span class="help-tip" tabindex="0" data-tip="Duración del servicio en minutos.">?</span>
+                        </label>
+                        <div class="qty-field">
+                            <input type="number" step="5" value="@s.Minutos.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                   disabled="@(!_usuario.SuscripcionActiva)"
+                                   @onchange="(e) => ActualizarServicioAsync(s.Id, minutosStr: e.Value?.ToString())" />
+                            <span class="unit-badge">min</span>
+                        </div>
+
+                        <label style="font-size:0.85rem;">Persona:</label>
+                        <select value="@s.CategoriaPersonalId" disabled="@(!_usuario.SuscripcionActiva)"
+                                @onchange="(e) => ActualizarServicioAsync(s.Id, personaIdStr: e.Value?.ToString())">
+                            <option value="">-- Sin asignar --</option>
+                            @foreach (var per in _centro.Personal)
+                            {
+                                <option value="@per.Id">@per.Nombre (@per.PrecioUnitario.ToString("N4") €/min)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <button class="btn btn-danger" disabled="@(!_usuario.SuscripcionActiva)"
+                                @onclick="() => EliminarServicioAsync(s.Id)">Eliminar Servicio</button>
+                    </div>
+                </div>
+
+                <div class="grid-4" style="margin-bottom:1rem;">
+                    <div class="stat-card" style="padding:0.65rem 0.9rem;">
+                        <div class="stat-label">
+                            Gastos Generales (@s.Minutos.ToString("N0") min)
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Minutos del servicio x Total Precio Unitario de Gastos Generales.">?</span>
+                        </div>
+                        <div style="font-weight:700; font-size:1.1rem;">@costeGastos.ToString("N2") €</div>
+                    </div>
+                    <div class="stat-card" style="padding:0.65rem 0.9rem;">
+                        <div class="stat-label">
+                            Coste Persona (@(s.CategoriaPersonal?.Nombre ?? "-"))
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Minutos del servicio x Precio Unitario por minuto de la Persona asignada.">?</span>
+                        </div>
+                        <div style="font-weight:700; font-size:1.1rem;">@costePersona.ToString("N2") €</div>
+                    </div>
+                    <div class="stat-card" style="padding:0.65rem 0.9rem;">
+                        <div class="stat-label">
+                            Coste Productos (@s.LineasProducto.Count ítems)
+                            <span class="help-tip" tabindex="0" data-tip="Suma del coste de todos los productos empleados en la receta del tratamiento.">?</span>
+                        </div>
+                        <div style="font-weight:700; font-size:1.1rem;">@costeProductos.ToString("N2") €</div>
+                    </div>
+                    <div class="stat-card" style="padding:0.65rem 0.9rem; background:#eef2ff; border-color:#c7d2fe;">
+                        <div class="stat-label" style="color:#3730a3;">
+                            Escandallo Total
+                            <span class="help-tip" tabindex="0" data-tip="Coste real total del servicio = Gastos Generales + Coste Persona + Coste Productos.">?</span>
+                        </div>
+                        <div style="font-weight:700; font-size:1.2rem; color:#312e81;">@escandalloTotal.ToString("N2") €</div>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Producto</th>
+                                <th class="num">
+                                    Cantidad
+                                    <span class="help-tip" tabindex="0" data-tip="Cantidad o dosis consumida del producto en una sesión, expresada en su unidad de medida (ml, ud, g).">?</span>
+                                </th>
+                                <th class="num">
+                                    Precio Unitario
+                                    <span class="help-tip" tabindex="0" data-tip="Coste por unidad traído automáticamente del catálogo de Productos.">?</span>
+                                </th>
+                                <th class="num">
+                                    Coste Línea (€)
+                                    <span class="help-tip" tabindex="0" data-tip="Fórmula: Cantidad x Precio Unitario del producto.">?</span>
+                                </th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                var idx = 1;
+                            }
+                            @foreach (var lp in s.LineasProducto)
+                            {
+                                var unidadProd = lp.Producto?.UnidadMedida ?? "ud";
+                                <tr>
+                                    <td>@(idx++)</td>
+                                    <th>@(lp.Producto?.Nombre ?? "Producto")</th>
+                                    <td class="num">
+                                        <div class="qty-field">
+                                            <input type="number" step="0.01" value="@lp.Cantidad.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                                   disabled="@(!_usuario.SuscripcionActiva)"
+                                                   title="Cantidad consumida (@unidadProd)"
+                                                   @onchange="(e) => ActualizarCantidadLineaAsync(lp.Id, e.Value?.ToString())" />
+                                            <span class="unit-badge">@unidadProd</span>
+                                        </div>
+                                    </td>
+                                    <td class="num formula-cell">@((lp.Producto?.PrecioUnitario ?? 0m).ToString("N5")) €/@unidadProd</td>
+                                    <td class="num formula-cell" title="Fórmula: Cantidad x Precio Unitario">
+                                        @lp.Coste.ToString("N4") €
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-danger" disabled="@(!_usuario.SuscripcionActiva)"
+                                                @onclick="() => EliminarLineaProductoAsync(lp.Id)">Quitar</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_usuario.SuscripcionActiva && _centro.Productos.Any())
+                {
+                    var prodSeleccionado = ObtenerProductoSeleccionado(s.Id);
+                    <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap; margin-top:0.85rem;">
+                        <div class="form-group" style="margin:0;">
+                            <label>Producto a añadir</label>
+                            <select @onchange="(e) => SeleccionarProductoParaServicio(s.Id, e.Value?.ToString())">
+                                @foreach (var prod in _centro.Productos)
+                                {
+                                    <option value="@prod.Id">@prod.Nombre (@prod.PrecioUnitario.ToString("N4") €/@prod.UnidadMedida)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>
+                                Cantidad
+                                <span class="help-tip" tabindex="0" data-tip="Dosis empleada en este servicio en la unidad del producto seleccionado.">?</span>
+                            </label>
+                            <div class="qty-field">
+                                <input type="number" step="0.01"
+                                       value="@ObtenerCantidadTemp(s.Id).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                       @onchange="(e) => CambiarCantidadTemp(s.Id, e.Value?.ToString())" />
+                                <span class="unit-badge">@(prodSeleccionado?.UnidadMedida ?? "ml")</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline" @onclick="() => AgregarLineaProductoAsync(s.Id)">+ Añadir Producto al Servicio</button>
+                    </div>
+                }
+            }
+        </div>
+    }
+}
+
+@code {
+    private Usuario? _usuario;
+    private CentroEstetica? _centro;
+    private readonly HashSet<int> _serviciosExpandidos = new();
+
+    private void AlternarServicio(int servicioId)
+    {
+        if (!_serviciosExpandidos.Remove(servicioId))
+        {
+            _serviciosExpandidos.Add(servicioId);
+        }
+    }
+
+    private string _nuevoNombre = string.Empty;
+    private decimal _nuevosMinutos = 60m;
+    private int? _nuevaPersonaId;
+    private decimal? _nuevoPvr;
+
+    private readonly Dictionary<int, int> _productoTempPorServicio = new();
+    private readonly Dictionary<int, decimal> _cantidadTempPorServicio = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await Sesion.AsegurarSesionInicialAsync();
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        if (Sesion.CentroActualId.HasValue)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _centro = await db.Centros
+                .Include(c => c.GastosGenerales)
+                .Include(c => c.Personal)
+                .Include(c => c.Productos)
+                .Include(c => c.Servicios)
+                    .ThenInclude(s => s.CategoriaPersonal)
+                .Include(c => c.Servicios)
+                    .ThenInclude(s => s.LineasProducto)
+                        .ThenInclude(lp => lp.Producto)
+                .FirstOrDefaultAsync(c => c.Id == Sesion.CentroActualId.Value);
+
+            if (_centro is not null && !_nuevaPersonaId.HasValue)
+            {
+                _nuevaPersonaId = _centro.Personal.FirstOrDefault()?.Id;
+            }
+        }
+    }
+
+    private Producto? ObtenerProductoSeleccionado(int servicioId)
+    {
+        if (_centro is null || !_centro.Productos.Any()) return null;
+        if (_productoTempPorServicio.TryGetValue(servicioId, out var pid))
+        {
+            return _centro.Productos.FirstOrDefault(p => p.Id == pid) ?? _centro.Productos.First();
+        }
+        return _centro.Productos.First();
+    }
+
+    private async Task CrearServicioAsync()
+    {
+        if (_centro is null || string.IsNullOrWhiteSpace(_nuevoNombre)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Servicios.Add(new Servicio
+        {
+            CentroEsteticaId = _centro.Id,
+            Nombre = _nuevoNombre.Trim(),
+            Minutos = _nuevosMinutos > 0 ? _nuevosMinutos : 60m,
+            CategoriaPersonalId = _nuevaPersonaId,
+            Pvr = _nuevoPvr
+        });
+        await db.SaveChangesAsync();
+        _nuevoNombre = string.Empty;
+        _nuevoPvr = null;
+        await CargarAsync();
+    }
+
+    private async Task ActualizarServicioAsync(int servicioId, string? nombre = null, string? minutosStr = null, string? personaIdStr = null)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var s = await db.Servicios.FindAsync(servicioId);
+        if (s is null) return;
+
+        if (nombre is not null && !string.IsNullOrWhiteSpace(nombre))
+            s.Nombre = nombre.Trim();
+        if (minutosStr is not null && decimal.TryParse(minutosStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var min) && min >= 0)
+            s.Minutos = min;
+        if (personaIdStr is not null)
+            s.CategoriaPersonalId = int.TryParse(personaIdStr, out var pid) ? pid : null;
+
+        await db.SaveChangesAsync();
+        await CargarAsync();
+    }
+
+    private async Task EliminarServicioAsync(int servicioId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var s = await db.Servicios.FindAsync(servicioId);
+        if (s is not null)
+        {
+            db.Servicios.Remove(s);
+            await db.SaveChangesAsync();
+            await CargarAsync();
+        }
+    }
+
+    private void SeleccionarProductoParaServicio(int servicioId, string? prodIdStr)
+    {
+        if (int.TryParse(prodIdStr, out var prodId))
+        {
+            _productoTempPorServicio[servicioId] = prodId;
+        }
+    }
+
+    private decimal ObtenerCantidadTemp(int servicioId) =>
+        _cantidadTempPorServicio.TryGetValue(servicioId, out var c) ? c : 1m;
+
+    private void CambiarCantidadTemp(int servicioId, string? cantStr)
+    {
+        if (decimal.TryParse((cantStr ?? "1").Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var c) && c > 0)
+        {
+            _cantidadTempPorServicio[servicioId] = c;
+        }
+    }
+
+    private async Task AgregarLineaProductoAsync(int servicioId)
+    {
+        if (_centro is null || !_centro.Productos.Any()) return;
+        var prodId = _productoTempPorServicio.TryGetValue(servicioId, out var pid)
+            ? pid
+            : _centro.Productos.First().Id;
+        var cant = ObtenerCantidadTemp(servicioId);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.ServicioProductos.Add(new ServicioProducto
+        {
+            ServicioId = servicioId,
+            ProductoId = prodId,
+            Cantidad = cant
+        });
+        await db.SaveChangesAsync();
+        await CargarAsync();
+    }
+
+    private async Task ActualizarCantidadLineaAsync(int lineaId, string? cantStr)
+    {
+        if (cantStr is null) return;
+        if (decimal.TryParse(cantStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cant) && cant >= 0)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var lp = await db.ServicioProductos.FindAsync(lineaId);
+            if (lp is not null)
+            {
+                lp.Cantidad = cant;
+                await db.SaveChangesAsync();
+                await CargarAsync();
+            }
+        }
+    }
+
+    private async Task EliminarLineaProductoAsync(int lineaId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var lp = await db.ServicioProductos.FindAsync(lineaId);
+        if (lp is not null)
+        {
+            db.ServicioProductos.Remove(lp);
+            await db.SaveChangesAsync();
+            await CargarAsync();
+        }
+    }
+
+    private async void RecargarAsync()
+    {
+        await CargarAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

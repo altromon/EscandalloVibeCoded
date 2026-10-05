@@ -1,0 +1,204 @@
+@page "/productos"
+@implements IDisposable
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SesionUsuarioService Sesion
+
+<PageTitle>Productos - Escandallo</PageTitle>
+
+@if (_centro is null || _usuario is null)
+{
+    <div class="alert alert-warning">Selecciona un centro activo o inicia sesión.</div>
+}
+else
+{
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+        <h1 style="margin:0; font-size:1.5rem;">Hoja Productos — @_centro.Nombre</h1>
+        <a href="manual" class="btn btn-outline">📖 Ver Manual de Ayuda</a>
+    </div>
+
+    @if (!_usuario.SuscripcionActiva)
+    {
+        <div class="alert alert-warning">Suscripción inactiva. <a href="suscripcion">Activa un plan</a> para editar el catálogo de productos.</div>
+    }
+    else
+    {
+        <div class="card">
+            <h3 style="margin-top:0; font-size:1.05rem;">Añadir Producto al Catálogo</h3>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Nombre Producto
+                        <span class="help-tip" tabindex="0" data-tip="Nombre comercial del producto o consumible utilizado en cabina.">?</span>
+                    </label>
+                    <input @bind="_nuevoNombre" placeholder="Ej. Ácido Hialurónico..." title="Nombre del producto" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Cantidad
+                        <span class="help-tip" tabindex="0" data-tip="Contenido total del envase comprado y su unidad de medida (ej. 500 ml, 12 ud, 100 g).">?</span>
+                    </label>
+                    <div class="qty-field">
+                        <input type="number" step="0.01" @bind="_nuevaCantidad" title="Cantidad total del envase" />
+                        <select @bind="_nuevaUnidad" class="unit-badge" style="cursor:pointer;" title="Unidad de medida del envase">
+                            <option value="ml">ml</option>
+                            <option value="ud">ud</option>
+                            <option value="g">g</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Precio (€)
+                        <span class="help-tip" tabindex="0" data-tip="Precio de compra del envase completo en euros.">?</span>
+                    </label>
+                    <input type="number" step="0.01" @bind="_nuevoPrecio" title="Precio del envase en euros" />
+                </div>
+                <button class="btn btn-primary" @onclick="AgregarProductoAsync">+ Añadir Producto</button>
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th class="num">
+                            Cantidad
+                            <span class="help-tip" tabindex="0" data-tip="Cantidad total del envase junto a su unidad de medida (ml, ud, g).">?</span>
+                        </th>
+                        <th class="num">
+                            Precio (€)
+                            <span class="help-tip" tabindex="0" data-tip="Coste de compra del envase completo en euros.">?</span>
+                        </th>
+                        <th class="num">
+                            Precio Unitario
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Precio / Cantidad. Indica el coste exacto por cada ml, ud o gramo usado.">?</span>
+                        </th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _centro.Productos)
+                    {
+                        <tr>
+                            <th>
+                                <input value="@p.Nombre" disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Editar nombre del producto"
+                                       @onchange="(e) => ActualizarProductoAsync(p.Id, nombre: e.Value?.ToString())" />
+                            </th>
+                            <td class="num">
+                                <div class="qty-field">
+                                    <input type="number" step="0.01" value="@p.Cantidad.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                           disabled="@(!_usuario.SuscripcionActiva)"
+                                           title="Cantidad total del envase (@p.UnidadMedida)"
+                                           @onchange="(e) => ActualizarProductoAsync(p.Id, cantidadStr: e.Value?.ToString())" />
+                                    <span class="unit-badge" title="Unidad de medida">@p.UnidadMedida</span>
+                                </div>
+                            </td>
+                            <td class="num">
+                                <input type="number" step="0.01" value="@p.Precio.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                       disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Precio del envase en euros"
+                                       @onchange="(e) => ActualizarProductoAsync(p.Id, precioStr: e.Value?.ToString())" />
+                            </td>
+                            <td class="num formula-cell" title="Fórmula: Precio / Cantidad">
+                                @p.PrecioUnitario.ToString("N5") €/@p.UnidadMedida
+                            </td>
+                            <td>
+                                <button class="btn btn-danger" disabled="@(!_usuario.SuscripcionActiva)"
+                                        @onclick="() => EliminarProductoAsync(p.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+    private CentroEstetica? _centro;
+
+    private string _nuevoNombre = string.Empty;
+    private decimal _nuevaCantidad = 100m;
+    private string _nuevaUnidad = "ml";
+    private decimal _nuevoPrecio = 25m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await Sesion.AsegurarSesionInicialAsync();
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        if (Sesion.CentroActualId.HasValue)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _centro = await db.Centros
+                .Include(c => c.Productos)
+                .FirstOrDefaultAsync(c => c.Id == Sesion.CentroActualId.Value);
+        }
+    }
+
+    private async Task AgregarProductoAsync()
+    {
+        if (_centro is null || string.IsNullOrWhiteSpace(_nuevoNombre)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Productos.Add(new Producto
+        {
+            CentroEsteticaId = _centro.Id,
+            Nombre = _nuevoNombre.Trim(),
+            Cantidad = _nuevaCantidad > 0 ? _nuevaCantidad : 1m,
+            UnidadMedida = _nuevaUnidad,
+            Precio = _nuevoPrecio
+        });
+        await db.SaveChangesAsync();
+        _nuevoNombre = string.Empty;
+        await CargarAsync();
+    }
+
+    private async Task ActualizarProductoAsync(int id, string? nombre = null, string? cantidadStr = null, string? unidad = null, string? precioStr = null)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Productos.FindAsync(id);
+        if (p is null) return;
+
+        if (nombre is not null && !string.IsNullOrWhiteSpace(nombre))
+            p.Nombre = nombre.Trim();
+        if (cantidadStr is not null && decimal.TryParse(cantidadStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cant) && cant > 0)
+            p.Cantidad = cant;
+        if (unidad is not null && !string.IsNullOrWhiteSpace(unidad))
+            p.UnidadMedida = unidad.Trim();
+        if (precioStr is not null && decimal.TryParse(precioStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var precio))
+            p.Precio = precio;
+
+        await db.SaveChangesAsync();
+        await CargarAsync();
+    }
+
+    private async Task EliminarProductoAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Productos.FindAsync(id);
+        if (p is not null)
+        {
+            db.Productos.Remove(p);
+            await db.SaveChangesAsync();
+            await CargarAsync();
+        }
+    }
+
+    private async void RecargarAsync()
+    {
+        await CargarAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

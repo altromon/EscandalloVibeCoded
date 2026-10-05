@@ -1,0 +1,270 @@
+@page "/"
+@implements IDisposable
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SesionUsuarioService Sesion
+
+<PageTitle>PVR y Datos Globales - Escandallo</PageTitle>
+
+@if (_usuario is null)
+{
+    <div class="alert alert-warning">
+        Debes iniciar sesión en <a href="cuenta">Cuenta / Multi-Cliente</a> para ver tus centros.
+    </div>
+}
+else if (_centro is null)
+{
+    <div class="alert alert-info">
+        No tienes ningún centro seleccionado. Ve a <a href="centros">Mis Centros</a> para crear uno.
+    </div>
+}
+else
+{
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+        <div>
+            <h1 style="margin:0; font-size:1.5rem;">Hoja PVR y Parámetros Globales — @_centro.Nombre</h1>
+            <small style="color:var(--muted);">Cálculo automático de rentabilidad, margen de beneficio, IVA y Precio de Venta Recomendado (PVR)</small>
+        </div>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <a href="manual" class="btn btn-outline">📖 Ver Manual de Ayuda</a>
+            <a href="/api/export/pdf/@_centro.Id" target="_blank" data-enhance-nav="false" class="btn btn-outline">📄 Exportar PDF (Resumen + Desglose)</a>
+            <a href="/api/export/excel/@_centro.Id" target="_blank" data-enhance-nav="false" class="btn btn-outline">📗 Exportar Excel (.xlsx)</a>
+        </div>
+    </div>
+
+    @if (!_usuario.SuscripcionActiva)
+    {
+        <div class="alert alert-warning">
+            <strong>Modo solo lectura:</strong> Tu cuenta no tiene una suscripción activa. <a href="suscripcion">Activa tu suscripción en la pasarela de pago</a> para modificar datos y tarifas.
+        </div>
+    }
+
+    <div class="grid-4" style="margin-bottom:1.25rem;">
+        <div class="stat-card">
+            <div class="stat-label">
+                IVA Global (Hoja Datos)
+                <span class="help-tip" tabindex="0" data-tip="Porcentaje de IVA aplicado sobre el precio con beneficio para obtener el precio mínimo con impuestos (por defecto 21%).">?</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.4rem;">
+                <input type="number" step="1" min="0" max="100" disabled="@(!_usuario.SuscripcionActiva)"
+                       value="@(Math.Round(_centro.Iva * 100, 2))"
+                       title="Porcentaje de IVA aplicable"
+                       @onchange="CambiarIvaAsync" />
+                <span>%</span>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">
+                Beneficio Objetivo (Hoja Datos)
+                <span class="help-tip" tabindex="0" data-tip="Margen de beneficio sobre el coste de escandallo: Precio con Beneficio = Escandallo Total x (1 + Beneficio%).">?</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.4rem;">
+                <input type="number" step="1" min="0" max="500" disabled="@(!_usuario.SuscripcionActiva)"
+                       value="@(Math.Round(_centro.Beneficio * 100, 2))"
+                       title="Porcentaje de beneficio objetivo sobre el escandallo"
+                       @onchange="CambiarBeneficioAsync" />
+                <span>%</span>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">
+                Gastos Generales / Minuto
+                <span class="help-tip" tabindex="0" data-tip="Suma de los precios unitarios por minuto de la hoja Gastos Generales.">?</span>
+            </div>
+            <div class="stat-value">@_centro.TotalPrecioUnitarioGastosGenerales.ToString("N4") €</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Catálogo del Centro</div>
+            <div class="stat-value" style="font-size:1.1rem;">
+                @_centro.Servicios.Count serv. · @_centro.Productos.Count prod. · @_centro.Personal.Count pers.
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem;">
+            <h2 style="margin:0; font-size:1.15rem;">Tabla PVR (Precios de Venta Recomendados)</h2>
+            <a href="servicios" class="btn btn-primary">+ Gestionar Servicios y Recetas</a>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Servicio</th>
+                        <th class="num">
+                            Cantidad
+                            <span class="help-tip" tabindex="0" data-tip="Duración del servicio expresada en minutos.">?</span>
+                        </th>
+                        <th>Personal Asignado</th>
+                        <th class="num">
+                            Escandallo Total
+                            <span class="help-tip" tabindex="0" data-tip="Coste real total del tratamiento (Gastos Generales + Personal + Productos).">?</span>
+                        </th>
+                        <th class="num">
+                            Con Beneficio (@((_centro.Beneficio * 100).ToString("N0"))%)
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Escandallo Total x (1 + Beneficio%). Precio base antes de impuestos.">?</span>
+                        </th>
+                        <th class="num">
+                            Con IVA (@((_centro.Iva * 100).ToString("N0"))%)
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Con Beneficio x (1 + IVA%). Precio mínimo de venta sugerido con IVA incluido.">?</span>
+                        </th>
+                        <th class="num">
+                            PVR Fijado (€)
+                            <span class="help-tip" tabindex="0" data-tip="Precio de Venta Recomendado final definido manualmente por la clínica para su tarifa al público.">?</span>
+                        </th>
+                        <th class="num">
+                            Diferencia PVR vs IVA
+                            <span class="help-tip" tabindex="0" data-tip="Diferencia entre el PVR fijado y el precio mínimo sugerido con IVA (positivo = margen extra; negativo = por debajo del objetivo).">?</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in _centro.Servicios)
+                    {
+                        var totalGastosUnit = _centro.TotalPrecioUnitarioGastosGenerales;
+                        var escandallo = s.CalcularEscandalloTotal(totalGastosUnit);
+                        var beneficio = s.CalcularPrecioConBeneficio(totalGastosUnit, _centro.Beneficio);
+                        var conIva = s.CalcularPrecioConIva(totalGastosUnit, _centro.Beneficio, _centro.Iva);
+                        var diferencia = s.Pvr.HasValue ? s.Pvr.Value - conIva : (decimal?)null;
+
+                        <tr>
+                            <th>@s.Nombre</th>
+                            <td class="num">
+                                <div class="qty-field">
+                                    <span>@s.Minutos.ToString("0.##")</span>
+                                    <span class="unit-badge">min</span>
+                                </div>
+                            </td>
+                            <td>@(s.CategoriaPersonal?.Nombre ?? "Sin asignar")</td>
+                            <td class="num formula-cell" title="Coste total del servicio">@escandallo.ToString("N2") €</td>
+                            <td class="num formula-cell" title="Fórmula: Escandallo Total x (1 + Beneficio)">@beneficio.ToString("N2") €</td>
+                            <td class="num formula-cell" title="Fórmula: Precio con Beneficio x (1 + IVA)">@conIva.ToString("N2") €</td>
+                            <td class="num">
+                                <input type="number" step="0.5" min="0"
+                                       disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Introduce el PVR de venta al público en euros"
+                                       value="@(s.Pvr?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))"
+                                       placeholder="Sin fijar"
+                                       @onchange="(e) => ActualizarPvrAsync(s.Id, e.Value?.ToString())" />
+                            </td>
+                            <td class="num">
+                                @if (diferencia.HasValue)
+                                {
+                                    <span style="color:@(diferencia.Value >= 0 ? "var(--success)" : "var(--danger)"); font-weight:600;">
+                                        @(diferencia.Value >= 0 ? "+" : "")@diferencia.Value.ToString("N2") €
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--muted);">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+    private CentroEstetica? _centro;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        await Sesion.AsegurarSesionInicialAsync();
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+
+        if (Sesion.CentroActualId.HasValue)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _centro = await db.Centros
+                .Include(c => c.GastosGenerales)
+                .Include(c => c.Personal)
+                .Include(c => c.Productos)
+                .Include(c => c.Servicios)
+                    .ThenInclude(s => s.CategoriaPersonal)
+                .Include(c => c.Servicios)
+                    .ThenInclude(s => s.LineasProducto)
+                        .ThenInclude(lp => lp.Producto)
+                .FirstOrDefaultAsync(c => c.Id == Sesion.CentroActualId.Value);
+        }
+        else
+        {
+            _centro = null;
+        }
+    }
+
+    private async Task CambiarIvaAsync(ChangeEventArgs e)
+    {
+        if (_centro is null || _usuario is null || !_usuario.SuscripcionActiva) return;
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var c = await db.Centros.FindAsync(_centro.Id);
+            if (c is not null)
+            {
+                c.Iva = pct / 100m;
+                await db.SaveChangesAsync();
+                await CargarDatosAsync();
+            }
+        }
+    }
+
+    private async Task CambiarBeneficioAsync(ChangeEventArgs e)
+    {
+        if (_centro is null || _usuario is null || !_usuario.SuscripcionActiva) return;
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var c = await db.Centros.FindAsync(_centro.Id);
+            if (c is not null)
+            {
+                c.Beneficio = pct / 100m;
+                await db.SaveChangesAsync();
+                await CargarDatosAsync();
+            }
+        }
+    }
+
+    private async Task ActualizarPvrAsync(int servicioId, string? valor)
+    {
+        if (_centro is null || _usuario is null || !_usuario.SuscripcionActiva) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var s = await db.Servicios.FindAsync(servicioId);
+        if (s is not null)
+        {
+            if (string.IsNullOrWhiteSpace(valor))
+            {
+                s.Pvr = null;
+            }
+            else if (decimal.TryParse(valor.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pvr))
+            {
+                s.Pvr = pvr;
+            }
+            await db.SaveChangesAsync();
+            await CargarDatosAsync();
+        }
+    }
+
+    private async void RecargarAsync()
+    {
+        await CargarDatosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Sesion.OnEstadoCambiado -= RecargarAsync;
+    }
+}

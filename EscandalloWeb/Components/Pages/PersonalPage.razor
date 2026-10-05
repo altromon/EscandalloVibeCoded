@@ -1,0 +1,228 @@
+@page "/personal"
+@implements IDisposable
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SesionUsuarioService Sesion
+
+<PageTitle>Personal - Escandallo</PageTitle>
+
+@if (_centro is null || _usuario is null)
+{
+    <div class="alert alert-warning">Selecciona un centro activo o inicia sesión.</div>
+}
+else
+{
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:0.5rem;">
+        <div>
+            <h1 style="margin:0; font-size:1.5rem;">Hoja Personal — @_centro.Nombre</h1>
+            <small style="color:var(--muted);">Fórmula Excel: <code>Coste para empresa = ((Neto * Retenciones) + Neto) * 1.5</code> · <code>Precio Unitario = Coste / Cantidad</code></small>
+        </div>
+        <a href="manual" class="btn btn-outline">📖 Ver Manual de Ayuda</a>
+    </div>
+
+    @if (!_usuario.SuscripcionActiva)
+    {
+        <div class="alert alert-warning">Suscripción inactiva. <a href="suscripcion">Activa un plan</a> para editar categorías de personal.</div>
+    }
+    else
+    {
+        <div class="card">
+            <h3 style="margin-top:0; font-size:1.05rem;">Añadir Categoría Profesional</h3>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Nombre Categoría
+                        <span class="help-tip" tabindex="0" data-tip="Perfil o puesto profesional que ejecuta los tratamientos (ej. Técnico, Enfermero, Doctor).">?</span>
+                    </label>
+                    <input @bind="_nuevoNombre" placeholder="Ej. Esteticista, Médico..." title="Nombre de la categoría profesional" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Cantidad
+                        <span class="help-tip" tabindex="0" data-tip="Tiempo productivo mensual del puesto (por defecto 8h x 60min x 22 días = 10.560 minutos/mes).">?</span>
+                    </label>
+                    <div class="qty-field">
+                        <input type="number" step="0.01" @bind="_nuevaCantidad" title="Cantidad mensual en minutos/mes" />
+                        <span class="unit-badge">minutos/mes</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Sueldo Neto (€)
+                        <span class="help-tip" tabindex="0" data-tip="Salario neto mensual percibido por el trabajador en euros.">?</span>
+                    </label>
+                    <input type="number" step="10" @bind="_nuevoNeto" title="Sueldo neto mensual en euros" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>
+                        Retenciones (%)
+                        <span class="help-tip" tabindex="0" data-tip="Porcentaje de retención de IRPF aplicable a esta categoría (ej. 20%, 22%, 25%).">?</span>
+                    </label>
+                    <input type="number" step="1" @bind="_nuevaRetencionPct" title="Porcentaje de retención IRPF" />
+                </div>
+                <button class="btn btn-primary" @onclick="AgregarPersonalAsync">+ Añadir Personal</button>
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th class="num">
+                            Cantidad
+                            <span class="help-tip" tabindex="0" data-tip="Cantidad total mensual expresada en su unidad de medida (10.560 minutos/mes = 8h x 60min x 22 días).">?</span>
+                        </th>
+                        <th class="num">
+                            Neto (€)
+                            <span class="help-tip" tabindex="0" data-tip="Salario neto mensual en euros.">?</span>
+                        </th>
+                        <th class="num">
+                            Retenciones (%)
+                            <span class="help-tip" tabindex="0" data-tip="Porcentaje de IRPF aplicado sobre el neto.">?</span>
+                        </th>
+                        <th class="num">
+                            Coste para empresa (€)
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: ((Neto * Retenciones) + Neto) * 1.5 (incluye IRPF y factor 1.5 de Seguridad Social).">?</span>
+                        </th>
+                        <th class="num">
+                            Precio Unitario
+                            <span class="help-tip" tabindex="0" data-tip="Fórmula: Coste para empresa / Cantidad.">?</span>
+                        </th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _centro.Personal)
+                    {
+                        <tr>
+                            <th>
+                                <input value="@p.Nombre" disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Editar nombre de la categoría"
+                                       @onchange="(e) => ActualizarPersonalAsync(p.Id, nombre: e.Value?.ToString())" />
+                            </th>
+                            <td class="num">
+                                <div class="qty-field">
+                                    <input type="number" step="0.01" value="@p.Cantidad.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                           disabled="@(!_usuario.SuscripcionActiva)"
+                                           title="Cantidad total (@p.UnidadMedida)"
+                                           @onchange="(e) => ActualizarPersonalAsync(p.Id, cantidadStr: e.Value?.ToString())" />
+                                    <span class="unit-badge">@p.UnidadMedida</span>
+                                </div>
+                            </td>
+                            <td class="num">
+                                <input type="number" step="10" value="@p.Neto.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                       disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Sueldo neto mensual en euros"
+                                       @onchange="(e) => ActualizarPersonalAsync(p.Id, netoStr: e.Value?.ToString())" />
+                            </td>
+                            <td class="num">
+                                <input type="number" step="1" value="@((p.Retenciones * 100m).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))"
+                                       disabled="@(!_usuario.SuscripcionActiva)"
+                                       title="Retención IRPF (%)"
+                                       @onchange="(e) => ActualizarPersonalAsync(p.Id, retencionPctStr: e.Value?.ToString())" />
+                            </td>
+                            <td class="num formula-cell" title="Fórmula: ((Neto * Retenciones) + Neto) * 1.5">
+                                @p.CosteEmpresa.ToString("N2") €
+                            </td>
+                            <td class="num formula-cell" title="Fórmula: Coste para empresa / Cantidad">
+                                @p.PrecioUnitario.ToString("N5") €/@p.UnidadMedida
+                            </td>
+                            <td>
+                                <button class="btn btn-danger" disabled="@(!_usuario.SuscripcionActiva)"
+                                        @onclick="() => EliminarPersonalAsync(p.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+    private CentroEstetica? _centro;
+
+    private string _nuevoNombre = string.Empty;
+    private decimal _nuevaCantidad = 10560m;
+    private decimal _nuevoNeto = 1200m;
+    private decimal _nuevaRetencionPct = 20m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await Sesion.AsegurarSesionInicialAsync();
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        if (Sesion.CentroActualId.HasValue)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _centro = await db.Centros
+                .Include(c => c.Personal)
+                .FirstOrDefaultAsync(c => c.Id == Sesion.CentroActualId.Value);
+        }
+    }
+
+    private async Task AgregarPersonalAsync()
+    {
+        if (_centro is null || string.IsNullOrWhiteSpace(_nuevoNombre)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Personal.Add(new CategoriaPersonal
+        {
+            CentroEsteticaId = _centro.Id,
+            Nombre = _nuevoNombre.Trim(),
+            Cantidad = _nuevaCantidad > 0 ? _nuevaCantidad : 10560m,
+            UnidadMedida = "minutos/mes",
+            Neto = _nuevoNeto,
+            Retenciones = _nuevaRetencionPct / 100m
+        });
+        await db.SaveChangesAsync();
+        _nuevoNombre = string.Empty;
+        await CargarAsync();
+    }
+
+    private async Task ActualizarPersonalAsync(int id, string? nombre = null, string? cantidadStr = null, string? netoStr = null, string? retencionPctStr = null)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Personal.FindAsync(id);
+        if (p is null) return;
+
+        if (nombre is not null && !string.IsNullOrWhiteSpace(nombre))
+            p.Nombre = nombre.Trim();
+        if (cantidadStr is not null && decimal.TryParse(cantidadStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cant) && cant > 0)
+            p.Cantidad = cant;
+        if (netoStr is not null && decimal.TryParse(netoStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var neto))
+            p.Neto = neto;
+        if (retencionPctStr is not null && decimal.TryParse(retencionPctStr.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var retPct))
+            p.Retenciones = retPct / 100m;
+
+        await db.SaveChangesAsync();
+        await CargarAsync();
+    }
+
+    private async Task EliminarPersonalAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Personal.FindAsync(id);
+        if (p is not null)
+        {
+            db.Personal.Remove(p);
+            await db.SaveChangesAsync();
+            await CargarAsync();
+        }
+    }
+
+    private async void RecargarAsync()
+    {
+        await CargarAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

@@ -1,0 +1,110 @@
+@page "/centros"
+@implements IDisposable
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SesionUsuarioService Sesion
+
+<PageTitle>Mis Centros de Estética - Escandallo</PageTitle>
+
+@if (_usuario is null)
+{
+    <div class="alert alert-warning">Inicia sesión en <a href="cuenta">Cuenta</a> para gestionar tus centros.</div>
+}
+else
+{
+    <h1 style="margin-top:0; font-size:1.5rem;">Mis Centros de Estética — @_usuario.Nombre</h1>
+    <p style="color:var(--muted); margin-top:0;">Cada centro tiene su propio catálogo aislado de productos, personal, gastos generales, servicios y parámetros IVA/Beneficio.</p>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_exito ? "alert-info" : "alert-warning")">@_mensaje</div>
+    }
+
+    <div class="card">
+        <h3 style="margin-top:0; font-size:1.05rem;">Dar de Alta Nuevo Centro de Estética</h3>
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+            <div class="form-group" style="margin:0;">
+                <label>Nombre del Centro</label>
+                <input @bind="_nuevoNombre" placeholder="Ej. Clínica Estética Centro Sur" style="width:240px;" />
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label>Dirección</label>
+                <input @bind="_nuevaDireccion" placeholder="Ej. Av. Diagonal 120" style="width:240px;" />
+            </div>
+            <div class="form-group" style="margin:0; flex-direction:row; align-items:center; gap:0.4rem; padding-bottom:0.45rem;">
+                <input type="checkbox" id="chk-plantilla" @bind="_cargarPlantilla" />
+                <label for="chk-plantilla" style="margin:0;">Pre-cargar datos de CalculadoraEscandallo.xlsx</label>
+            </div>
+            <button class="btn btn-primary" @onclick="CrearCentroAsync">+ Crear Centro</button>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        @foreach (var c in _usuario.Centros)
+        {
+            var esActivo = Sesion.CentroActualId == c.Id;
+            <div class="card" style="border-color:@(esActivo ? "var(--primary)" : "var(--border)");">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <h3 style="margin:0;">@c.Nombre</h3>
+                        <small style="color:var(--muted);">@(string.IsNullOrWhiteSpace(c.Direccion) ? "Sin dirección especificada" : c.Direccion)</small>
+                    </div>
+                    @if (esActivo)
+                    {
+                        <span class="badge badge-active">Centro Activo</span>
+                    }
+                </div>
+
+                <div style="margin-top:0.85rem; font-size:0.9rem; color:var(--muted);">
+                    IVA: <strong>@((c.Iva * 100).ToString("N0"))%</strong> · Beneficio objetivo: <strong>@((c.Beneficio * 100).ToString("N0"))%</strong>
+                </div>
+
+                <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                    @if (!esActivo)
+                    {
+                        <button class="btn btn-primary" @onclick="() => Sesion.SeleccionarCentro(c.Id)">Seleccionar este centro</button>
+                    }
+                    else
+                    {
+                        <a href="" class="btn btn-outline">Ir al Escandallo / PVR</a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+    private string _nuevoNombre = string.Empty;
+    private string _nuevaDireccion = string.Empty;
+    private bool _cargarPlantilla = true;
+    private string? _mensaje;
+    private bool _exito;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async Task CrearCentroAsync()
+    {
+        var res = await Sesion.CrearCentroAsync(_nuevoNombre, _nuevaDireccion, _cargarPlantilla);
+        _exito = res.Exito;
+        _mensaje = res.Mensaje;
+        if (res.Exito)
+        {
+            _nuevoNombre = string.Empty;
+            _nuevaDireccion = string.Empty;
+        }
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async void RecargarAsync()
+    {
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

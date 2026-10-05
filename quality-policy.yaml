@@ -1,0 +1,15 @@
+version: "1.0"
+project: "EscandalloWeb SaaS"
+enforcement_mode: "PERMISSIVE"
+
+scope:
+  target_directories:
+    - "EscandalloWeb"
+    - "EscandalloWeb.Tests"
+  supported_extensions:
+    - ".cs"
+  exclude_patterns:
+    - "bin"
+    - "obj"
+    - ".git"
+    - "reports"

@@ -1,0 +1,164 @@
+@page "/suscripcion"
+@implements IDisposable
+@inject SesionUsuarioService Sesion
+
+<PageTitle>Suscripción y Pasarela de Pago - Escandallo</PageTitle>
+
+@if (_usuario is null)
+{
+    <div class="alert alert-warning">Inicia sesión en <a href="cuenta">Cuenta</a> para gestionar tu suscripción.</div>
+}
+else
+{
+    <h1 style="margin-top:0; font-size:1.5rem;">Suscripción y Pasarela de Pago (Simulada)</h1>
+
+    @if (!string.IsNullOrEmpty(_mensaje))
+    {
+        <div class="alert @(_exito ? "alert-info" : "alert-warning")">@_mensaje</div>
+    }
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+                <h3 style="margin:0;">Estado Actual: @(_usuario.SuscripcionActiva ? $"Activa ({_usuario.Plan})" : "Sin suscripción activa")</h3>
+                @if (_usuario.SuscripcionActiva)
+                {
+                    <div style="color:var(--muted); font-size:0.9rem; margin-top:0.25rem;">
+                        Renovación: @(_usuario.FechaExpiracionSuscripcion?.ToString("dd/MM/yyyy") ?? "-") ·
+                        Tarjeta: **** **** **** @(_usuario.MetodoPagoUltimos4 ?? "4242")
+                    </div>
+                }
+            </div>
+
+            @if (_usuario.SuscripcionActiva)
+            {
+                <button class="btn btn-danger" @onclick="CancelarAsync">Cancelar Suscripción (Probar bloqueo)</button>
+            }
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card" style="border-color:@(_planSeleccionado == PlanSuscripcion.ProfesionalMensual ? "var(--primary)" : "var(--border)");">
+            <h3 style="margin-top:0;">Plan Profesional Mensual</h3>
+            <div class="stat-value">29,00 € <small style="font-size:0.9rem; color:var(--muted);">/ mes</small></div>
+            <ul style="color:#334155; font-size:0.92rem; padding-left:1.2rem;">
+                <li>1 Centro de estética en la cuenta</li>
+                <li>Cálculo ilimitado de Servicios, Productos, Personal y Gastos</li>
+                <li>Hoja PVR y simulación de márgenes en tiempo real</li>
+            </ul>
+            <button class="btn @(_planSeleccionado == PlanSuscripcion.ProfesionalMensual ? "btn-primary" : "btn-outline")"
+                    @onclick="() => _planSeleccionado = PlanSuscripcion.ProfesionalMensual">
+                Seleccionar Plan Mensual
+            </button>
+        </div>
+
+        <div class="card" style="border-color:@(_planSeleccionado == PlanSuscripcion.MulticentroAnual ? "var(--primary)" : "var(--border)");">
+            <h3 style="margin-top:0;">Plan Multicentro Anual (Recomendado)</h3>
+            <div class="stat-value">290,00 € <small style="font-size:0.9rem; color:var(--muted);">/ año</small></div>
+            <ul style="color:#334155; font-size:0.92rem; padding-left:1.2rem;">
+                <li><strong>Múltiples centros de estética ilimitados</strong> bajo tu misma cuenta</li>
+                <li>Catálogo y parámetros independientes por cada clínica/centro</li>
+                <li>Importación instantánea de plantilla Excel por centro</li>
+            </ul>
+            <button class="btn @(_planSeleccionado == PlanSuscripcion.MulticentroAnual ? "btn-primary" : "btn-outline")"
+                    @onclick="() => _planSeleccionado = PlanSuscripcion.MulticentroAnual">
+                Seleccionar Plan Multicentro
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">💳 Checkout — Pasarela de Pago Simulada (Mock)</h3>
+        <p style="color:var(--muted); margin-top:0; font-size:0.9rem;">
+            Entorno simulado listo para sustituir por Stripe / Redsys / PayPal en producción. Introduce cualquier tarjeta de prueba para activar o cambiar el plan.
+        </p>
+
+        <div class="grid-4" style="align-items:flex-end;">
+            <div class="form-group" style="margin:0;">
+                <label>Plan a contratar</label>
+                <input disabled value="@(_planSeleccionado == PlanSuscripcion.MulticentroAnual ? "Multicentro Anual (290 €)" : "Profesional Mensual (29 €)")" />
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label>Titular de la tarjeta</label>
+                <input @bind="_titular" placeholder="Nombre o Razón Social" />
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label>Número de tarjeta (Mock)</label>
+                <input @bind="_numeroTarjeta" placeholder="4242 4242 4242 4242" />
+            </div>
+            <div>
+                <button class="btn btn-primary" style="width:100%;" @onclick="PagarSuscripcionAsync">
+                    Pagar y Activar Suscripción
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">Historial de Pagos y Facturación</h3>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Referencia</th>
+                        <th>Fecha</th>
+                        <th>Plan</th>
+                        <th class="num">Importe</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pago in _usuario.Pagos)
+                    {
+                        <tr>
+                            <th>@pago.ReferenciaTransaccion</th>
+                            <td>@pago.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@pago.Plan</td>
+                            <td class="num">@pago.Importe.ToString("N2") €</td>
+                            <td><span class="badge badge-active">@pago.Estado</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private Usuario? _usuario;
+    private PlanSuscripcion _planSeleccionado = PlanSuscripcion.MulticentroAnual;
+    private string _titular = "Clínicas Estéticas Demo S.L.";
+    private string _numeroTarjeta = "4242424242424242";
+    private string? _mensaje;
+    private bool _exito;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.OnEstadoCambiado += RecargarAsync;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async Task PagarSuscripcionAsync()
+    {
+        var res = await Sesion.ProcesarPagoSuscripcionSimuladaAsync(_planSeleccionado, _numeroTarjeta, _titular);
+        _exito = res.Exito;
+        _mensaje = res.Mensaje;
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async Task CancelarAsync()
+    {
+        await Sesion.CancelarSuscripcionAsync();
+        _exito = true;
+        _mensaje = "Suscripción cancelada. Ahora puedes comprobar el bloqueo de edición en las hojas de escandallo.";
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+    }
+
+    private async void RecargarAsync()
+    {
+        _usuario = await Sesion.ObtenerUsuarioActualAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Sesion.OnEstadoCambiado -= RecargarAsync;
+}

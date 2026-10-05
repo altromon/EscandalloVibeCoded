@@ -1,0 +1,113 @@
+@page "/manual"
+
+<PageTitle>Manual de Uso - Escandallo</PageTitle>
+
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+    <div>
+        <h1 style="margin:0; font-size:1.5rem;">📖 Manual de Uso y Guía de Fórmulas</h1>
+        <small style="color:var(--muted);">Pasa el cursor por encima de los iconos <span class="help-tip" tabindex="0" data-tip="¡Así funcionan las ayudas contextuales en toda la aplicación!">?</span> en cualquier tabla o formulario para ver ayuda contextual instantánea.</small>
+    </div>
+    <a href="" class="btn btn-primary">Volver a Hoja PVR</a>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0; font-size:1.15rem;">1. ¿Cómo se normaliza el campo «Cantidad» en toda la aplicación?</h2>
+    <p style="color:#334155; font-size:0.92rem;">
+        Todos los campos de <strong>Cantidad</strong> muestran siempre su valor numérico acompañado de su <strong>unidad de medida</strong> en una etiqueta gris (ej. <span class="unit-badge">minutos/mes</span>, <span class="unit-badge">ml</span>, <span class="unit-badge">ud</span>, <span class="unit-badge">min</span>) para saber exactamente qué magnitud se está introduciendo:
+    </p>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Hoja / Sección</th>
+                    <th>Unidad de Medida</th>
+                    <th>Qué representa el campo «Cantidad»</th>
+                    <th>Ejemplo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th>🏢 Gastos Generales</th>
+                    <td><span class="unit-badge">minutos/mes</span></td>
+                    <td>Minutos productivos de apertura del centro al mes (8 horas × 60 minutos × 22 días laborables).</td>
+                    <td><code>10560 minutos/mes</code></td>
+                </tr>
+                <tr>
+                    <th>👩‍⚕️ Personal</th>
+                    <td><span class="unit-badge">minutos/mes</span></td>
+                    <td>Minutos trabajados al mes por cada perfil profesional (8 horas × 60 minutos × 22 días laborables).</td>
+                    <td><code>10560 minutos/mes</code></td>
+                </tr>
+                <tr>
+                    <th>🧴 Productos</th>
+                    <td><span class="unit-badge">ml</span> <span class="unit-badge">ud</span> <span class="unit-badge">g</span></td>
+                    <td>Capacidad o número de unidades que contiene el envase completo comprado al proveedor.</td>
+                    <td><code>500 ml</code> (Cleasing Milk) · <code>12 ud</code> (Colagen Mask)</td>
+                </tr>
+                <tr>
+                    <th>💆‍♀️ Servicios (Cabecera y PVR)</th>
+                    <td><span class="unit-badge">min</span></td>
+                    <td>Duración total del tratamiento en cabina. Multiplica el coste por minuto de Gastos Generales y Personal.</td>
+                    <td><code>60 min</code> (Mesodermolifting)</td>
+                </tr>
+                <tr>
+                    <th>💆‍♀️ Servicios (Líneas de Receta)</th>
+                    <td><span class="unit-badge">ml</span> <span class="unit-badge">ud</span> <span class="unit-badge">g</span></td>
+                    <td>Dosis o cantidad de producto consumida en una sola sesión del tratamiento.</td>
+                    <td><code>4 ml</code> de Cleasing Milk · <code>2.5 ml</code> de DMAE</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2 style="margin-top:0; font-size:1.15rem;">2. Fórmulas de Costes Base</h2>
+        <ul style="color:#334155; font-size:0.9rem; line-height:1.65; padding-left:1.2rem;">
+            <li>
+                <strong>Gastos Generales — Precio Unitario:</strong><br />
+                <code>Precio Unitario = Coste para empresa / Cantidad</code><br />
+                <em>El SUBTOTAL suma todos los precios unitarios para obtener el coste fijo por cada minuto de cabina (ej. 0,08286 €/min).</em>
+            </li>
+            <li style="margin-top:0.5rem;">
+                <strong>Personal — Coste para empresa y Precio Unitario:</strong><br />
+                <code>Coste Empresa = ((Neto × Retenciones) + Neto) × 1,5</code><br />
+                <code>Precio Unitario = Coste Empresa / Cantidad</code><br />
+                <em>Añade la retención de IRPF al sueldo neto y aplica un coeficiente 1,5 de coste patronal / Seguridad Social.</em>
+            </li>
+            <li style="margin-top:0.5rem;">
+                <strong>Productos — Precio Unitario:</strong><br />
+                <code>Precio Unitario = Precio Envase / Cantidad Envase</code>
+            </li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:1.15rem;">3. Fórmulas de Escandallo y PVR</h2>
+        <ul style="color:#334155; font-size:0.9rem; line-height:1.65; padding-left:1.2rem;">
+            <li>
+                <strong>Costes de un Servicio:</strong><br />
+                <code>Gastos Generales = Minutos × SUBTOTAL Gastos Generales</code><br />
+                <code>Coste Persona = Minutos × Precio Unitario Persona</code><br />
+                <code>Coste Productos = Σ (Cantidad Usada × Precio Unitario Producto)</code><br />
+                <code>Escandallo Total = Gastos Generales + Coste Persona + Coste Productos</code>
+            </li>
+            <li style="margin-top:0.5rem;">
+                <strong>Rentabilidad y PVR (Hoja PVR):</strong><br />
+                <code>Con Beneficio = Escandallo Total × (1 + % Beneficio)</code><br />
+                <code>Con IVA = Con Beneficio × (1 + % IVA)</code><br />
+                <code>Diferencia = PVR Fijado − Con IVA</code>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0; font-size:1.15rem;">4. Gestión Multi-Centro, Suscripción y Exportación</h2>
+    <p style="color:#334155; font-size:0.9rem; margin-bottom:0.5rem;">
+        • <strong>Selector de Centro Activo:</strong> En la barra superior puedes alternar entre cualquiera de las clínicas de tu cuenta. Todos los cambios que realices se guardan de forma aislada para el centro seleccionado.<br />
+        • <strong>Servicios Plegables:</strong> En <em>Servicios y Recetas</em> cada tratamiento aparece plegado mostrando su resumen; pulsa <code>▶ Desplegar</code> para editar o revisar sus productos.<br />
+        • <strong>Exportación:</strong> Desde las pantallas de <em>PVR</em> y <em>Servicios</em> puedes descargar el informe en <strong>PDF</strong> (con Resumen Ejecutivo y Desglose de cada tratamiento) o en <strong>Excel (<code>.xlsx</code>)</strong> con las 6 hojas y fórmulas compatibles con <code>CalculadoraEscandallo.xlsx</code>.
+    </p>
+</div>
